@@ -1,0 +1,59 @@
+name: HCL Repository Scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: 'Target repository to scan'
+        required: true
+        default: 'https://github.com/HabanaAI/HCL'
+        type: string
+      rate-limit:
+        description: 'Rate limit GitHub API requests'
+        required: false
+        default: 150
+        type: number
+
+jobs:
+  hcl-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          repository: ${{ github.event.inputs.repo }}
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential
+
+      - name: Set Up HCL Environment
+        run: |
+          export HCL_SRC_PKG_DIR=$(pwd)
+          export HCL_LIB_DIR=/usr/lib/habanalabs
+
+      - name: Build HCL
+        run: |
+          cd src
+          HCL_SRC_PKG_DIR=$(pwd) HCL_LIB_DIR=/usr/lib/habanalabs cmake .
+          make
+
+      - name: Run Clang Static Analyzer
+        run: |
+          scan-build make  # Adjust this command based on HCL build system
+
+      - name: Run Clang-Tidy
+        run: |
+          find . -name "*.cpp" | xargs clang-tidy
+
+      - name: Count Lines of Code
+        run: |
+          cloc src
+
+      - name: Upload Scan Results
+        uses: actions/upload-artifact@v3
+        with:
+          name: hcl-scan-results
+          path: src
+
