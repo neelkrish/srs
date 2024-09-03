@@ -34,7 +34,7 @@ on:
         required: false
         type: number
         default: 0
-       hcl-scan:
+      hcl-scan:
         description: 'Run HCL repository scan'
         required: false
         type: number
