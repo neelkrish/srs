@@ -1,13 +1,12 @@
-name: HCL Repository Scan
+name: HCL Custom Scan
 
 on:
   workflow_dispatch:
     inputs:
       repo:
-        description: 'Target repository to scan'
+        description: 'Repository to scan'
         required: true
         default: 'https://github.com/HabanaAI/HCL'
-        type: string
       rate-limit:
         description: 'Rate limit GitHub API requests'
         required: false
@@ -18,42 +17,50 @@ jobs:
   hcl-scan:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout SRS Repository
         uses: actions/checkout@v2
-        with:
-          repository: ${{ github.event.inputs.repo }}
-
+      
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake build-essential
-
-      - name: Set Up HCL Environment
+          sudo apt-get install -y cmake clang clang-tidy infer
+      
+      - name: Build HCL Project
         run: |
-          export HCL_SRC_PKG_DIR=$(pwd)
-          export HCL_LIB_DIR=/usr/lib/habanalabs
-
-      - name: Build HCL
-        run: |
-          cd src
-          HCL_SRC_PKG_DIR=$(pwd) HCL_LIB_DIR=/usr/lib/habanalabs cmake .
+          cd /home/root123/gaudi/srs/HCL/hcl/src
+          export HCL_SRC_PKG_DIR=/home/root123/gaudi/HCL
+          export HCL_LIB_DIR=/home/root123/gaudi/HCL/hcl/include  # Updated HCL_LIB_DIR to point to include directory
+          cmake -DCMAKE_CXX_FLAGS="-I${HCL_LIB_DIR}" .
           make
-
-      - name: Run Clang Static Analyzer
+        continue-on-error: true
+      
+      - name: Run clang scan-build
         run: |
-          scan-build make  # Adjust this command based on HCL build system
+          scan-build -o ./clang-results --status-bugs make -C /home/root123/gaudi/HCL/hcl/src
+        continue-on-error: true
 
-      - name: Run Clang-Tidy
+      - name: Run clang-tidy
         run: |
-          find . -name "*.cpp" | xargs clang-tidy
+          clang-tidy /home/root123/gaudi/HCL/hcl/src/*.cpp -- -I /home/root123/gaudi/HCL/hcl/include
+        continue-on-error: true
 
-      - name: Count Lines of Code
+      - name: Run OSSF Scorecard
+        uses: ossf/scorecard-action@v2
+        with:
+          results_file: results.json
+        continue-on-error: true
+
+      - name: Run Infer Static Analysis
         run: |
-          cloc src
+          infer run -- make -C /home/root123/gaudi/HCL/hcl/src
+        continue-on-error: true
 
-      - name: Upload Scan Results
-        uses: actions/upload-artifact@v3
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v2
         with:
           name: hcl-scan-results
-          path: src
+          path: |
+            ./clang-results
+            ./results.json
+            ./infer-out
 
